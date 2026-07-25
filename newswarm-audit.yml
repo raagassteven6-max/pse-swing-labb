@@ -1,0 +1,73 @@
+name: 🤖 Swarm Integrity Audit
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'   # Every Monday 2AM UTC
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Scan type'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - security
+          - performance
+          - static
+
+jobs:
+  swarm-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run AI Audit Swarm
+        id: swarm_scan
+        run: node ai-audit-swarm/audit.js --file=index.html --output=swarm-report.json --github-issue=true
+        continue-on-error: true
+
+      - name: Check reports exist
+        id: check_reports
+        run: |
+          if [ -f "swarm-report.json" ]; then
+            echo "json_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "json_exists=false" >> $GITHUB_OUTPUT
+          fi
+          if [ -f "swarm-report-issue.md" ]; then
+            echo "issue_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "issue_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Report Artifact
+        if: steps.check_reports.outputs.json_exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: swarm-audit-report
+          path: |
+            swarm-report.json
+            swarm-report.md
+            swarm-report-issue.md
+
+      - name: Create GitHub Issue (if issues found)
+        if: steps.swarm_scan.outcome == 'failure' && steps.check_reports.outputs.issue_exists == 'true'
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "🤖 Swarm Audit Alert — ${{ github.sha }}"
+          content-filepath: ./swarm-report-issue.md
+          labels: |
+            swarm-audit
+            automated
+            bug
