@@ -37,7 +37,22 @@ jobs:
         run: node ai-audit-swarm/audit.js --file=index.html --output=swarm-report.json --github-issue=true
         continue-on-error: true
 
+      - name: Check reports exist
+        id: check_reports
+        run: |
+          if [ -f "swarm-report.json" ]; then
+            echo "json_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "json_exists=false" >> $GITHUB_OUTPUT
+          fi
+          if [ -f "swarm-report-issue.md" ]; then
+            echo "issue_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "issue_exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Upload Report Artifact
+        if: steps.check_reports.outputs.json_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: swarm-audit-report
@@ -47,7 +62,7 @@ jobs:
             swarm-report-issue.md
 
       - name: Create GitHub Issue (if issues found)
-        if: steps.swarm_scan.outcome == 'failure'
+        if: steps.swarm_scan.outcome == 'failure' && steps.check_reports.outputs.issue_exists == 'true'
         uses: peter-evans/create-issue-from-file@v5
         with:
           title: "🤖 Swarm Audit Alert — ${{ github.sha }}"
