@@ -1,1 +1,58 @@
+name: 🤖 Swarm Integrity Audit
 
+on:
+  schedule:
+    - cron: '0 2 * * 1'   # Every Monday 2AM UTC
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Scan type'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - security
+          - performance
+          - static
+
+jobs:
+  swarm-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run AI Audit Swarm
+        id: swarm_scan
+        run: node ai-audit-swarm/audit.js --file=index.html --output=swarm-report.json --github-issue=true
+        continue-on-error: true
+
+      - name: Upload Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: swarm-audit-report
+          path: |
+            swarm-report.json
+            swarm-report.md
+            swarm-report-issue.md
+
+      - name: Create GitHub Issue (if issues found)
+        if: steps.swarm_scan.outcome == 'failure'
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "🤖 Swarm Audit Alert — ${{ github.sha }}"
+          content-filepath: ./swarm-report-issue.md
+          labels: |
+            swarm-audit
+            automated
+            bug
